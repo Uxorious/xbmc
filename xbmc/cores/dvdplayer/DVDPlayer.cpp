@@ -138,12 +138,8 @@ static bool PredicateAudioPriority(const SelectionStream& lh, const SelectionStr
   PREDICATE_RETURN(lh.type_index == g_settings.m_currentVideoSettings.m_AudioStream
                  , rh.type_index == g_settings.m_currentVideoSettings.m_AudioStream);
 
-  if(!g_guiSettings.GetString("locale.audiolanguage").Equals("original"))
-  {
-    CStdString audio_language = g_langInfo.GetAudioLanguage();
-    PREDICATE_RETURN(audio_language.Equals(lh.language.c_str())
-                   , audio_language.Equals(rh.language.c_str()));
-  }
+  PREDICATE_RETURN(lh.language == lh.preferred_language
+                 , rh.language == rh.preferred_language);
 
   PREDICATE_RETURN(lh.flags & CDemuxStream::FLAG_DEFAULT
                  , rh.flags & CDemuxStream::FLAG_DEFAULT);
@@ -167,12 +163,8 @@ static bool PredicateSubtitlePriority(const SelectionStream& lh, const Selection
   PREDICATE_RETURN(lh.type_index == g_settings.m_currentVideoSettings.m_SubtitleStream
                  , rh.type_index == g_settings.m_currentVideoSettings.m_SubtitleStream);
 
-  CStdString subtitle_language = g_langInfo.GetSubtitleLanguage();
-  if(!g_guiSettings.GetString("locale.subtitlelanguage").Equals("original"))
-  {
-    PREDICATE_RETURN((lh.source == STREAM_SOURCE_DEMUX_SUB || lh.source == STREAM_SOURCE_TEXT) && subtitle_language.Equals(lh.language.c_str())
-                   , (rh.source == STREAM_SOURCE_DEMUX_SUB || rh.source == STREAM_SOURCE_TEXT) && subtitle_language.Equals(rh.language.c_str()));
-  }
+  PREDICATE_RETURN((lh.source == STREAM_SOURCE_DEMUX_SUB || lh.source == STREAM_SOURCE_TEXT) && lh.language == rh.preferred_language
+                 , (rh.source == STREAM_SOURCE_DEMUX_SUB || rh.source == STREAM_SOURCE_TEXT) && rh.language == rh.preferred_language);
 
   PREDICATE_RETURN(lh.source == STREAM_SOURCE_DEMUX_SUB
                  , rh.source == STREAM_SOURCE_DEMUX_SUB);
@@ -180,11 +172,8 @@ static bool PredicateSubtitlePriority(const SelectionStream& lh, const Selection
   PREDICATE_RETURN(lh.source == STREAM_SOURCE_TEXT
                  , rh.source == STREAM_SOURCE_TEXT);
 
-  if(!g_guiSettings.GetString("locale.subtitlelanguage").Equals("original"))
-  {
-    PREDICATE_RETURN(subtitle_language.Equals(lh.language.c_str())
-                   , subtitle_language.Equals(rh.language.c_str()));
-  }
+  PREDICATE_RETURN(lh.language == lh.preferred_language
+                 , rh.language == rh.preferred_language);
 
   PREDICATE_RETURN(lh.flags & CDemuxStream::FLAG_DEFAULT
                  , rh.flags & CDemuxStream::FLAG_DEFAULT);
@@ -663,15 +652,21 @@ bool CDVDPlayer::OpenDemuxStream()
 void CDVDPlayer::OpenDefaultStreams()
 {
   SelectionStreams streams;
+  std::string video_language,
+              audio_language,
+              subtitle_language;
   bool valid;
 
   // open video stream
-  streams = m_SelectionStreams.Get(STREAM_VIDEO, PredicateVideoPriority);
+  streams = m_SelectionStreams.Get(STREAM_VIDEO, PredicateVideoPriority, "");
   valid   = false;
   for(SelectionStreams::iterator it = streams.begin(); it != streams.end() && !valid; ++it)
   {
     if(OpenVideoStream(it->id, it->source))
-      valid = true;;
+    {
+      video_language = it->language;
+      valid = true;
+    }
   }
   if(!valid)
     CloseVideoStream(true);
@@ -680,8 +675,13 @@ void CDVDPlayer::OpenDefaultStreams()
   if(m_PlayerOptions.video_only)
     streams.clear();
   else
-    streams = m_SelectionStreams.Get(STREAM_AUDIO, PredicateAudioPriority);
-  valid   = false;
+  {
+    audio_language = video_language;
+    if(!g_guiSettings.GetString("locale.audiolanguage").Equals("original"))
+      audio_language = g_langInfo.GetAudioLanguage();
+    streams = m_SelectionStreams.Get(STREAM_AUDIO, PredicateAudioPriority, audio_language);
+  }
+  valid = false;
 
   for(SelectionStreams::iterator it = streams.begin(); it != streams.end() && !valid; ++it)
   {
@@ -695,7 +695,10 @@ void CDVDPlayer::OpenDefaultStreams()
   m_dvdPlayerVideo.EnableSubtitle(g_settings.m_currentVideoSettings.m_SubtitleOn);
 
   // open subtitle stream
-  streams = m_SelectionStreams.Get(STREAM_SUBTITLE, PredicateSubtitlePriority);
+  subtitle_language = video_language;
+  if(!g_guiSettings.GetString("locale.subtitlelanguage").Equals("original"))
+    subtitle_language = g_langInfo.GetSubtitleLanguage();
+  streams = m_SelectionStreams.Get(STREAM_SUBTITLE, PredicateSubtitlePriority, subtitle_language);
   valid   = false;
   for(SelectionStreams::iterator it = streams.begin(); it != streams.end() && !valid; ++it)
   {

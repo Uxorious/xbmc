@@ -111,7 +111,8 @@ typedef struct
   int          type_index;
   std::string  filename;
   std::string  filename2;  // for vobsub subtitles, 2 files are necessary (idx/sub) 
-  std::string  language;
+  std::string  language,
+               preferred_language;
   std::string  name;
   CDemuxStream::EFlags flags;
   int          source;
@@ -142,9 +143,11 @@ public:
   bool             Get     (StreamType type, CDemuxStream::EFlags flag, SelectionStream& out);
 
   SelectionStreams Get(StreamType type);
-  template<typename Compare> SelectionStreams Get(StreamType type, Compare compare)
+  template<typename Compare> SelectionStreams Get(StreamType type, Compare compare, std::string preferred_language)
   {
     SelectionStreams streams = Get(type);
+    for(SelectionStreams::iterator it = streams.begin(); it != streams.end(); ++it)
+        it->preferred_language = preferred_language;
     std::stable_sort(streams.begin(), streams.end(), compare);
     return streams;
   }
